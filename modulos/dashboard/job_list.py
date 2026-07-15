@@ -36,7 +36,7 @@ def render_job_filters(all_jobs_unified, all_technologies):
         )
 
     search_text = st.text_input(
-        "Buscar en titulos y descripciones **(experimental)** :",
+        "Buscar en titulos y descripciones:",
         placeholder="Ej: machine learning, senior, remote...",
         help="Busca texto específico en títulos y descripciones de ofertas."
     )
