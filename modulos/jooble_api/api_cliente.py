@@ -6,8 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from modulos.jooble_api.configuracion import (
-    JOOBLE_HOST, JOOBLE_API_KEY, MAX_PAGES, DAYS_FILTER, 
-    API_DELAY, ERROR_WAIT_TIME
+    JOOBLE_HOST, JOOBLE_API_KEYS, MAX_PAGES, DAYS_FILTER, API_DELAY
 )
 from modulos.jooble_api.modelos import Job
 from modulos.jooble_api.procesamiento_texto import is_data_science_related, technology_appears_in_text
@@ -16,23 +15,23 @@ logger = logging.getLogger(__name__)
 
 def _validate_config():
     """Valida que las variables de entorno necesarias estén configuradas."""
-    if not JOOBLE_API_KEY:
+    if not JOOBLE_API_KEYS:
         raise ValueError(
-            "JOOBLE_API_KEY no está configurada. "
-            "Asegúrate de tener un archivo .env con JOOBLE_API_KEY=tu_clave"
+            "No hay API keys de Jooble configuradas. "
+            "Define JOOBLE_API_KEYS (separadas por comas) o JOOBLE_API_KEY en tu archivo .env"
         )
-    logger.info("Configuración validada correctamente")
+    logger.info(f"Configuración validada correctamente ({len(JOOBLE_API_KEYS)} API key(s) disponibles)")
 
 @contextmanager
 def http_connection(host):
     """Context manager para conexiones HTTP."""
-    conn = http.client.HTTPConnection(host)
+    conn = http.client.HTTPSConnection(host)
     try:
         yield conn
     finally:
         conn.close()
 
-def _make_api_request(page, keywords, location="España"):
+def _make_api_request(page, keywords, api_key, location="España"):
     try:
         with http_connection(JOOBLE_HOST) as connection:
             headers = {"Content-type": "application/json"}
@@ -41,8 +40,8 @@ def _make_api_request(page, keywords, location="España"):
                 "location": location,
                 "page": page
             })
-            
-            connection.request('POST', f'/api/{JOOBLE_API_KEY}', body, headers)
+
+            connection.request('POST', f'/api/{api_key}', body, headers)
             response = connection.getresponse()
             
             if response.status == 200:
@@ -99,20 +98,34 @@ def get_job_data(technology):
     all_job_ids = set()
     total_available = 0
     page = 1
-    
+
     cutoff_date = datetime.now() - timedelta(days=DAYS_FILTER)
-    
+
+    api_keys = list(JOOBLE_API_KEYS)
+    key_index = 0
+    consecutive_failures = 0
+
     try:
         while page <= MAX_PAGES:
             logger.info(f"  Fetching page {page}...")
-            
-            jobs_data = _make_api_request(page, technology)
-            
+
+            jobs_data = _make_api_request(page, technology, api_keys[key_index])
+
             if jobs_data is None:
-                logger.warning(f"Error en página {page}, esperando antes de reintentar...")
-                time.sleep(ERROR_WAIT_TIME)
-                break
-            
+                consecutive_failures += 1
+                if consecutive_failures >= len(api_keys):
+                    logger.error(
+                        f"Error persistente en página {page} tras probar las {len(api_keys)} API key(s), "
+                        f"deteniendo búsqueda de '{technology}'"
+                    )
+                    break
+                key_index = (key_index + 1) % len(api_keys)
+                logger.warning(
+                    f"Error en página {page}, rotando API key ({key_index + 1}/{len(api_keys)})..."
+                )
+                continue
+
+            consecutive_failures = 0
             jobs_list = jobs_data.get('jobs', [])
             
             if page == 1:

@@ -9,19 +9,106 @@ from modulos.jooble_api.modelos import Job
 logger = logging.getLogger(__name__)
 
 def _calculate_tech_combinations(jobs):
-    tech_combination_counts = Counter()
-    
+    if not jobs:
+        return {}
+
+    tech_order = {tech: idx for idx, tech in enumerate(technologies)}
+    min_occurrences = MIN_COMBO_OCCURRENCES
+
+    # Primer pase: normaliza y cuenta tecnologías individuales para filtrar ruido.
+    normalized_job_techs = []
+    tech_occurrences = Counter()
+
     for job in jobs:
         job_technologies = job.technologies if isinstance(job, Job) else job.get('technologies', [])
-        if len(job_technologies) >= 2:
-            sorted_techs = sorted(job_technologies, key=lambda t: technologies.index(t))
-            tech_combination_counts.update(
-                combo for size in range(2, len(sorted_techs) + 1)
-                for combo in combinations(sorted_techs, size)
-            )
-            
-    return {combo: count for combo, count in tech_combination_counts.items() 
-            if count >= MIN_COMBO_OCCURRENCES}
+
+        # Deduplicar por oferta evita inflar combinaciones y consumo de memoria.
+        unique_known_techs = {tech for tech in job_technologies if tech in tech_order}
+        if len(unique_known_techs) < 2:
+            continue
+
+        normalized_job_techs.append(unique_known_techs)
+        tech_occurrences.update(unique_known_techs)
+
+    if not normalized_job_techs:
+        return {}
+
+    # Cualquier combinación que incluya una tecnología con baja frecuencia
+    # no puede alcanzar el umbral mínimo.
+    eligible_techs = {
+        tech for tech, count in tech_occurrences.items()
+        if count >= min_occurrences
+    }
+
+    if len(eligible_techs) < 2:
+        return {}
+
+    transactions = []
+    for tech_set in normalized_job_techs:
+        filtered_techs = [tech for tech in tech_set if tech in eligible_techs]
+        if len(filtered_techs) < 2:
+            continue
+
+        sorted_techs = tuple(sorted(filtered_techs, key=tech_order.__getitem__))
+        transactions.append(sorted_techs)
+
+    if not transactions:
+        return {}
+
+    frequent_combination_counts = {}
+
+    # Nivel 2 (pares)
+    pair_counts = Counter()
+    for techs in transactions:
+        pair_counts.update(combinations(techs, 2))
+
+    frequent_k = {
+        pair: count for pair, count in pair_counts.items()
+        if count >= min_occurrences
+    }
+    frequent_combination_counts.update(frequent_k)
+
+    k = 3
+    while frequent_k:
+        prev_itemsets = sorted(frequent_k.keys())
+        prev_set = set(prev_itemsets)
+
+        # Join step: combina itemsets frecuentes de tamaño k-1 con prefijo común.
+        grouped_by_prefix = {}
+        for itemset in prev_itemsets:
+            prefix = itemset[:-1]
+            grouped_by_prefix.setdefault(prefix, []).append(itemset[-1])
+
+        candidate_set = set()
+        for prefix, suffixes in grouped_by_prefix.items():
+            suffixes.sort(key=tech_order.__getitem__)
+            for i in range(len(suffixes)):
+                for j in range(i + 1, len(suffixes)):
+                    candidate = prefix + (suffixes[i], suffixes[j])
+
+                    # Prune step: todos los subconjuntos de tamaño k-1 deben ser frecuentes.
+                    if all(candidate[:idx] + candidate[idx + 1:] in prev_set for idx in range(k)):
+                        candidate_set.add(candidate)
+
+        if not candidate_set:
+            break
+
+        candidate_counts = Counter()
+        for techs in transactions:
+            if len(techs) < k:
+                continue
+            for combo in combinations(techs, k):
+                if combo in candidate_set:
+                    candidate_counts[combo] += 1
+
+        frequent_k = {
+            combo: count for combo, count in candidate_counts.items()
+            if count >= min_occurrences
+        }
+        frequent_combination_counts.update(frequent_k)
+        k += 1
+
+    return frequent_combination_counts
 
 def _print_summary(tech_counts, tech_totals, total_unique_jobs):
     total_jobs_available = sum(tech_totals.values())
