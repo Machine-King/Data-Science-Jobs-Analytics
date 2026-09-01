@@ -10,14 +10,22 @@ Este proyecto analiza datos de empleabilidad en Python, procesando y visualizand
   - `modulos/jooble_api/`: Módulos orientados a la interacción con la API de Jooble y el tratamiento de los textos y base de datos (`api_cliente.py`, `analisis.py`, `base_datos.py`, `configuracion.py`, `modelos.py`, `procesamiento_texto.py`, `ubicaciones.py`).
   - `modulos/dashboard/`: Módulos que actúan como componentes visuales acoplados a Streamlit (`charts.py`, `data_loader.py`, `insights.py`, `job_list.py`, `metrics.py`, `sidebar.py`, `styles.py`).
 
-## Automatización recomendada
+## Automatización con GitHub Actions
 
-Para mantener los datos actualizados y la base de datos disponible automáticamente, se aconseja crear una tarea programada en Windows (o configurar rutinas Cron):
+La descarga de datos está automatizada mediante el workflow [`.github/workflows/descarga_datos.yml`](.github/workflows/descarga_datos.yml), que se ejecuta **semanalmente (lunes a las 06:00 UTC)** y también puede lanzarse manualmente desde la pestaña **Actions → Descarga de datos Jooble → Run workflow**.
 
-1. Edita el archivo `ejecutar_api.bat` y reemplaza la ruta dura genérica por la de tu entorno local.
-2. Fija estas instrucciones abriendo el Programador de tareas de Windows. Se sugiere configurar la descarga semanal de registros con *ejecutar_api*.
+El workflow instala las dependencias mínimas (`requirements-api.txt`), ejecuta `api_template.py` y vuelca las ofertas en la base de datos PostgreSQL. Si la API no devuelve ninguna oferta, el script termina con error sin tocar las tablas existentes.
 
-Esto garantizará que los datos de las ofertas se actualicen sin requerir intervención manual constante.
+Para que funcione, es necesario configurar dos secretos en el repositorio (**Settings → Secrets and variables → Actions**):
+
+| Secreto | Contenido |
+|---|---|
+| `JOOBLE_API_KEYS` | Una o varias API keys de Jooble, separadas por comas |
+| `POSTGRES_CONN_STR` | Cadena de conexión a PostgreSQL (Supabase) |
+
+> **Nota:** GitHub desactiva los workflows programados si el repositorio pasa ~60 días sin actividad; en ese caso basta con reactivarlos desde la pestaña Actions.
+
+Como alternativa para ejecución local, el archivo `ejecutar_api.bat` permite programar la descarga con el Programador de tareas de Windows (edita antes la ruta del proyecto dentro del .bat).
 
 ## Uso
 
@@ -32,15 +40,16 @@ Esto garantizará que los datos de las ofertas se actualicen sin requerir interv
 ## Requisitos
 
 - Python 3.11 o superior
-- Bibliotecas necesarias: `pandas`, `streamlit`, `plotly`, `psycopg2`, `python-dotenv`, `requests`
+- Dependencias completas (dashboard + descarga): `requirements.txt`
+- Dependencias mínimas para solo la descarga de datos: `requirements-api.txt`
 
 Para instalar las dependencias vía *pip*:
 
 ```powershell
-pip install pandas streamlit plotly psycopg2 python-dotenv requests
+pip install -r requirements.txt
 ```
 
-> **Nota:** Se requiere configurar las variables de entorno para funcionar (`JOOBLE_API_KEY`, `POSTGRES_CONN_STR`) dentro de un correspondiente archivo local `.env`.
+> **Nota:** Para ejecutar en local se requiere un archivo `.env` con las variables `JOOBLE_API_KEYS` (una o varias keys separadas por comas; también se acepta `JOOBLE_API_KEY` con una sola) y `POSTGRES_CONN_STR`.
 
 ## Creador
 Carlos Luis Rodríguez Brito

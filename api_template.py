@@ -59,7 +59,12 @@ def main():
     _process_technology_results(ordered_results, tech_counts, tech_totals, jobs_by_id)
     
     all_jobs_unified = list(jobs_by_id.values())
-    
+
+    # En ejecución desatendida (GitHub Actions), no vaciar las tablas si la API no devolvió nada.
+    if not all_jobs_unified:
+        logger.error("No se obtuvo ninguna oferta; se omite la escritura en base de datos.")
+        raise SystemExit(1)
+
     logger.info("-" * 30)
     _print_summary(tech_counts, tech_totals, len(all_jobs_unified))
 

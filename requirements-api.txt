@@ -1,0 +1,4 @@
+# Dependencias mínimas para la descarga de datos (api_template.py).
+# El dashboard usa requirements.txt completo.
+psycopg2-binary
+python-dotenv
